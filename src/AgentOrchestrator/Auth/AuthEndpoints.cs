@@ -14,7 +14,7 @@ public static class AuthEndpoints
         group.MapGet("/status", Status);
     }
 
-    private static IResult Login(
+    private static async Task<IResult> Login(
         HttpContext context,
         ITokenService tokenService)
     {
@@ -30,7 +30,7 @@ public static class AuthEndpoints
         var state = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
         context.Session.SetString("AuthState", state);
 
-        var authUrl = tokenService.BuildAuthorizationUrl(state);
+        var authUrl = await tokenService.BuildAuthorizationUrlAsync(state);
 
         return Results.Redirect(authUrl);
     }

@@ -239,7 +239,7 @@ src/AgentOrchestrator/
 ├── Models/
 │   ├── Intent.cs                   # Intent types and models
 │   ├── AgentResponse.cs            # Response model
-│   └── Settings.cs                 # Configuration models
+│   └── Configuration.cs            # Configuration models
 │
 └── wwwroot/                        # Web UI
     ├── index.html

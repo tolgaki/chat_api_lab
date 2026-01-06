@@ -1,3 +1,4 @@
+using System.Threading.RateLimiting;
 using AgentOrchestrator.Agent;
 using AgentOrchestrator.Auth;
 using AgentOrchestrator.Models;
@@ -29,7 +30,10 @@ builder.Services.AddSingleton(graphSettings);
 builder.Services.AddSingleton(orchestrationSettings);
 
 // === Session Support (for web auth) ===
-builder.Services.AddDistributedMemoryCache();
+// TODO: For production deployment with multiple instances, replace with:
+// - Redis: builder.Services.AddStackExchangeRedisCache(options => { options.Configuration = "..."; });
+// - SQL Server: builder.Services.AddDistributedSqlServerCache(options => { ... });
+builder.Services.AddDistributedMemoryCache(); // Single-instance only
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = TimeSpan.FromHours(1);
@@ -43,8 +47,16 @@ builder.Services.AddHttpContextAccessor();
 // === Auth Services ===
 builder.Services.AddSingleton<ITokenService, TokenService>();
 
-// === HTTP Client for Graph API ===
-builder.Services.AddHttpClient("Graph");
+// === HTTP Client for Graph API with Resilience ===
+builder.Services.AddHttpClient("Graph")
+    .AddStandardResilienceHandler(options =>
+    {
+        options.Retry.MaxRetryAttempts = 3;
+        options.Retry.Delay = TimeSpan.FromSeconds(1);
+        options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
+        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
+        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+    });
 
 // === Semantic Kernel Setup ===
 builder.Services.AddSingleton<Kernel>(sp =>
@@ -60,13 +72,16 @@ builder.Services.AddSingleton<Kernel>(sp =>
     // Build kernel
     var kernel = kernelBuilder.Build();
 
-    // Register plugins
+    // Get logger factory for plugin logging
+    var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
+
+    // Register plugins with logging
     kernel.Plugins.AddFromObject(
-        new IntentPlugin(kernel),
+        new IntentPlugin(kernel, loggerFactory.CreateLogger<IntentPlugin>()),
         "IntentPlugin");
 
     kernel.Plugins.AddFromObject(
-        new AzureOpenAIPlugin(kernel),
+        new AzureOpenAIPlugin(kernel, loggerFactory.CreateLogger<AzureOpenAIPlugin>()),
         "AzureOpenAIPlugin");
 
     kernel.Plugins.AddFromObject(
@@ -77,7 +92,7 @@ builder.Services.AddSingleton<Kernel>(sp =>
         "M365CopilotPlugin");
 
     kernel.Plugins.AddFromObject(
-        new SynthesisPlugin(kernel),
+        new SynthesisPlugin(kernel, loggerFactory.CreateLogger<SynthesisPlugin>()),
         "SynthesisPlugin");
 
     return kernel;
@@ -92,20 +107,63 @@ builder.AddAgentApplicationOptions();
 // Register the agent
 builder.AddAgent<OrchestratorAgent>();
 
-// === CORS for development ===
+// === CORS Configuration ===
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
+        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+            ?? ["http://localhost:5000"];
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
-              .AllowAnyHeader();
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
+// === Rate Limiting ===
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("api", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = 30,
+                QueueLimit = 5,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+            }));
+});
+
+// === Health Checks ===
+builder.Services.AddHealthChecks();
+
+// === Swagger/OpenAPI ===
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new Microsoft.OpenApi.Models.OpenApiInfo
+    {
+        Title = "Agent Orchestrator API",
+        Version = "v1",
+        Description = "API for the .NET 10 Agent Orchestrator with M365 Copilot integration"
     });
 });
 
 var app = builder.Build();
 
 // === Middleware Pipeline ===
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI(options =>
+    {
+        options.SwaggerEndpoint("/swagger/v1/swagger.json", "Agent Orchestrator API v1");
+    });
+}
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
@@ -113,6 +171,11 @@ app.UseSession();
 app.UseAuthMiddleware();
 
 app.UseCors();
+app.UseRateLimiter();
+
+// === Health Check Endpoints ===
+app.MapHealthChecks("/health");
+app.MapHealthChecks("/ready");
 
 // === Auth Endpoints (for web channel) ===
 app.MapAuthEndpoints();
@@ -121,7 +184,7 @@ app.MapAuthEndpoints();
 app.MapPost("/api/messages", async (HttpRequest request, HttpResponse response, IAgentHttpAdapter adapter, IAgent agent, CancellationToken cancellationToken) =>
 {
     await adapter.ProcessAsync(request, response, agent, cancellationToken);
-});
+}).RequireRateLimiting("api");
 
 // === Fallback to index.html for SPA ===
 app.MapFallbackToFile("index.html");

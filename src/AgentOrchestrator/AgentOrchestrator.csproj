@@ -23,6 +23,12 @@
 
     <!-- Authentication -->
     <PackageReference Include="Microsoft.Identity.Web" Version="3.8.2" />
+
+    <!-- API Documentation -->
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+
+    <!-- Resilience -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="9.1.0" />
   </ItemGroup>
 
 </Project>

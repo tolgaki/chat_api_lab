@@ -57,10 +57,12 @@ This lab demonstrates how to build a **.NET 10 Agent** using the **Microsoft 365
 
 ### Prerequisites
 
-- .NET 10 SDK
+- .NET 10 SDK (Preview - see note below)
 - Microsoft 365 tenant with Copilot license
 - Azure subscription with Azure OpenAI access
 - Azure AD app registration
+
+> **Note:** This project uses .NET 10 Preview. The SDK may have breaking changes before GA release. For production deployments, consider targeting .NET 9 (LTS) or monitor the .NET 10 release schedule.
 
 ### Setup
 

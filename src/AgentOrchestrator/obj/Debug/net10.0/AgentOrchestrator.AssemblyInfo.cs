@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("AgentOrchestrator")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+fb905b7836475ffade1b0652a30038fbfdc0f47c")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+b19b82a91a72852ab94efd6b9758cee377e2737a")]
 [assembly: System.Reflection.AssemblyProductAttribute("AgentOrchestrator")]
 [assembly: System.Reflection.AssemblyTitleAttribute("AgentOrchestrator")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

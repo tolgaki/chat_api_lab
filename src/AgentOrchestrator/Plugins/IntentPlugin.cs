@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 
 namespace AgentOrchestrator.Plugins;
@@ -6,10 +7,12 @@ namespace AgentOrchestrator.Plugins;
 public class IntentPlugin
 {
     private readonly Kernel _kernel;
+    private readonly ILogger<IntentPlugin>? _logger;
 
-    public IntentPlugin(Kernel kernel)
+    public IntentPlugin(Kernel kernel, ILogger<IntentPlugin>? logger = null)
     {
         _kernel = kernel;
+        _logger = logger;
     }
 
     [KernelFunction]
@@ -18,6 +21,8 @@ public class IntentPlugin
         [Description("The user's query to analyze")] string query,
         CancellationToken cancellationToken = default)
     {
+        _logger?.LogInformation("Analyzing intent for query: {Query}", query);
+
         var prompt = $$"""
             You are an intent classifier for a multi-agent system. Analyze the user's query and identify which agents should handle it.
 

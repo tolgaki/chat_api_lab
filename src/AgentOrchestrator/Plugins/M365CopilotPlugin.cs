@@ -73,11 +73,12 @@ public class M365CopilotPlugin
     {
         _logger.LogInformation("Calling Copilot Chat API with query: {Query}", query);
 
+        // Create Kiota client with user's access token
+        var client = CreateCopilotClient(accessToken);
+        Guid? conversationId = null;
+
         try
         {
-            // Create Kiota client with user's access token
-            var client = CreateCopilotClient(accessToken);
-
             // Step 1: Create conversation
             _logger.LogInformation("Creating conversation...");
             var conversation = await client.Copilot.Conversations.PostAsync(
@@ -89,6 +90,7 @@ public class M365CopilotPlugin
                 throw new InvalidOperationException("Failed to create conversation - no ID returned");
             }
 
+            conversationId = conversation.Id;
             _logger.LogInformation("Created conversation: {ConversationId}", conversation.Id);
 
             // Step 2: Send chat message
@@ -115,10 +117,40 @@ public class M365CopilotPlugin
             _logger.LogInformation("Received Copilot response");
             return responseText;
         }
+        catch (CopilotSdk.Models.CopilotConversation401Error ex)
+        {
+            _logger.LogError(ex, "Unauthorized - token may be expired or invalid");
+            throw new UnauthorizedAccessException("Your session has expired. Please log in again.");
+        }
+        catch (CopilotSdk.Models.CopilotConversation403Error ex)
+        {
+            _logger.LogError(ex, "Forbidden - user may lack Copilot license");
+            return "You don't have access to Microsoft 365 Copilot. Please contact your administrator to verify your license.";
+        }
+        catch (CopilotSdk.Models.CopilotConversation404Error ex)
+        {
+            _logger.LogError(ex, "Not found - conversation or endpoint not available");
+            return "The Copilot service is not available. Please try again later.";
+        }
+        catch (CopilotSdk.Models.CopilotConversation500Error ex)
+        {
+            _logger.LogError(ex, "Server error from Copilot API");
+            return "The Copilot service encountered an error. Please try again later.";
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error calling Copilot Chat API");
             throw;
+        }
+        finally
+        {
+            // Note: The Copilot Chat API doesn't currently support DELETE for conversations
+            // Conversations are automatically cleaned up by the service after expiration
+            // TODO: Add cleanup when DELETE is supported by the API
+            if (conversationId.HasValue)
+            {
+                _logger.LogDebug("Conversation {ConversationId} will be cleaned up by service expiration", conversationId);
+            }
         }
     }
 
@@ -139,18 +171,20 @@ public class M365CopilotPlugin
 }
 
 /// <summary>
-/// Simple token provider that returns a pre-obtained access token
+/// Simple token provider that returns a pre-obtained access token.
+/// Only provides tokens for Microsoft Graph API hosts.
 /// </summary>
 internal class TokenProvider : IAccessTokenProvider
 {
     private readonly string _accessToken;
+    private static readonly string[] AllowedHosts = ["graph.microsoft.com", "graph.microsoft-ppe.com"];
 
     public TokenProvider(string accessToken)
     {
         _accessToken = accessToken;
     }
 
-    public AllowedHostsValidator AllowedHostsValidator => new();
+    public AllowedHostsValidator AllowedHostsValidator => new(AllowedHosts);
 
     public Task<string> GetAuthorizationTokenAsync(
         Uri uri,

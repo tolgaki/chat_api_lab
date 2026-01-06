@@ -14,18 +14,23 @@ public class OrchestratorAgent : AgentApplication
     private readonly Kernel _kernel;
     private readonly ITokenService _tokenService;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly OrchestrationSettings _orchestrationSettings;
     private readonly ILogger<OrchestratorAgent> _logger;
+
+    private const int MaxMessageLength = 4000;
 
     public OrchestratorAgent(
         AgentApplicationOptions options,
         Kernel kernel,
         ITokenService tokenService,
         IHttpContextAccessor httpContextAccessor,
+        OrchestrationSettings orchestrationSettings,
         ILogger<OrchestratorAgent> logger) : base(options)
     {
         _kernel = kernel;
         _tokenService = tokenService;
         _httpContextAccessor = httpContextAccessor;
+        _orchestrationSettings = orchestrationSettings;
         _logger = logger;
 
         // Register activity handlers
@@ -48,27 +53,51 @@ public class OrchestratorAgent : AgentApplication
             return;
         }
 
+        // Input validation
+        if (userMessage.Length > MaxMessageLength)
+        {
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text($"Message too long. Maximum {MaxMessageLength} characters allowed."),
+                cancellationToken);
+            return;
+        }
+
         _logger.LogInformation("Processing message: {Message}", userMessage);
 
         try
         {
+            // Create timeout-aware cancellation token
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(_orchestrationSettings.TimeoutSeconds));
+            var timeoutToken = timeoutCts.Token;
+
             // Get user's access token for M365 Copilot calls
-            var accessToken = await GetUserAccessTokenAsync(turnContext, cancellationToken);
+            var accessToken = await GetUserAccessTokenAsync(turnContext, timeoutToken);
 
             // Step 1: Analyze intent
             _logger.LogInformation("Step 1: Analyzing intent...");
-            var intents = await AnalyzeIntentAsync(userMessage, cancellationToken);
+            var intents = await AnalyzeIntentAsync(userMessage, timeoutToken);
+
+            // Apply MaxAgentCalls limit
+            if (intents.Count > _orchestrationSettings.MaxAgentCalls)
+            {
+                _logger.LogWarning("Truncating intents from {Count} to {Max}",
+                    intents.Count, _orchestrationSettings.MaxAgentCalls);
+                intents = intents.Take(_orchestrationSettings.MaxAgentCalls).ToList();
+            }
+
             _logger.LogInformation("Detected {Count} intent(s): {Intents}",
                 intents.Count,
                 string.Join(", ", intents.Select(i => i.Type)));
 
-            // Step 2: Execute agents in parallel based on intents
-            _logger.LogInformation("Step 2: Executing agents...");
-            var responses = await ExecuteAgentsAsync(intents, accessToken, cancellationToken);
+            // Step 2: Execute agents based on intents
+            _logger.LogInformation("Step 2: Executing agents (parallel={Parallel})...",
+                _orchestrationSettings.EnableParallelExecution);
+            var responses = await ExecuteAgentsAsync(intents, accessToken, timeoutToken);
 
             // Step 3: Synthesize response
             _logger.LogInformation("Step 3: Synthesizing response...");
-            var finalResponse = await SynthesizeResponseAsync(userMessage, responses, cancellationToken);
+            var finalResponse = await SynthesizeResponseAsync(userMessage, responses, timeoutToken);
 
             // Step 4: Send response
             await turnContext.SendActivityAsync(
@@ -83,11 +112,19 @@ public class OrchestratorAgent : AgentApplication
                 MessageFactory.Text("Please log in to access M365 features. Visit the web interface to authenticate."),
                 cancellationToken);
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning("Request timed out after {Seconds} seconds", _orchestrationSettings.TimeoutSeconds);
+            await turnContext.SendActivityAsync(
+                MessageFactory.Text("The request timed out. Please try a simpler query or try again later."),
+                cancellationToken);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error processing message");
+            // Don't expose internal error details to users
             await turnContext.SendActivityAsync(
-                MessageFactory.Text($"Sorry, an error occurred: {ex.Message}"),
+                MessageFactory.Text("Sorry, an error occurred processing your request. Please try again."),
                 cancellationToken);
         }
     }
@@ -122,9 +159,23 @@ public class OrchestratorAgent : AgentApplication
         string accessToken,
         CancellationToken cancellationToken)
     {
-        var tasks = intents.Select(intent => ExecuteAgentForIntentAsync(intent, accessToken, cancellationToken));
-        var responses = await Task.WhenAll(tasks);
-        return responses.ToList();
+        if (_orchestrationSettings.EnableParallelExecution)
+        {
+            var tasks = intents.Select(intent => ExecuteAgentForIntentAsync(intent, accessToken, cancellationToken));
+            var responses = await Task.WhenAll(tasks);
+            return responses.ToList();
+        }
+        else
+        {
+            // Sequential execution
+            var responses = new List<AgentResponse>();
+            foreach (var intent in intents)
+            {
+                var response = await ExecuteAgentForIntentAsync(intent, accessToken, cancellationToken);
+                responses.Add(response);
+            }
+            return responses;
+        }
     }
 
     private async Task<AgentResponse> ExecuteAgentForIntentAsync(
@@ -256,34 +307,30 @@ public class OrchestratorAgent : AgentApplication
         CancellationToken cancellationToken)
     {
         // For web channel, get token from HTTP context session
-        var httpContext = _httpContextAccessor.HttpContext;
-        if (httpContext != null)
+        var httpContext = _httpContextAccessor.HttpContext
+            ?? throw new UnauthorizedAccessException("No HTTP context available. Please log in via the web interface.");
+
+        var sessionId = httpContext.Session.Id;
+        if (string.IsNullOrEmpty(sessionId))
         {
-            var sessionId = httpContext.Session.Id;
-            if (!string.IsNullOrEmpty(sessionId))
-            {
-                try
-                {
-                    var token = await _tokenService.GetAccessTokenAsync(sessionId);
-                    if (!string.IsNullOrEmpty(token))
-                    {
-                        return token;
-                    }
-                }
-                catch (InvalidOperationException)
-                {
-                    // Token not found, fall through to throw unauthorized
-                }
-            }
+            throw new UnauthorizedAccessException("No session available. Please log in.");
         }
 
-        // For Teams/other channels, token would be passed via activity or SSO
-        // This would be implemented when adding Teams channel support
-        var tokenFromActivity = turnContext.Activity.Value?.ToString();
-        if (!string.IsNullOrEmpty(tokenFromActivity))
+        try
         {
-            return tokenFromActivity;
+            var token = await _tokenService.GetAccessTokenAsync(sessionId);
+            if (!string.IsNullOrEmpty(token))
+            {
+                return token;
+            }
         }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "Token not found for session {SessionId}", sessionId);
+        }
+
+        // TODO: For Teams channel support, implement SSO flow here
+        // See: https://learn.microsoft.com/en-us/microsoftteams/platform/bots/how-to/authentication/auth-aad-sso-bots
 
         throw new UnauthorizedAccessException("No access token available. Please log in.");
     }

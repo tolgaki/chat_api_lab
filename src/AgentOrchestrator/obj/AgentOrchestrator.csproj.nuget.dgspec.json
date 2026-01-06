@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/Users/tk/src/chat_api_lab/src/AgentOrchestrator/AgentOrchestrator.csproj": {}
+    "/Users/tk/src/chat_api_lab_public/src/AgentOrchestrator/AgentOrchestrator.csproj": {}
   },
   "projects": {
-    "/Users/tk/src/chat_api_lab/src/AgentOrchestrator/AgentOrchestrator.csproj": {
+    "/Users/tk/src/chat_api_lab_public/src/AgentOrchestrator/AgentOrchestrator.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/tk/src/chat_api_lab/src/AgentOrchestrator/AgentOrchestrator.csproj",
+        "projectUniqueName": "/Users/tk/src/chat_api_lab_public/src/AgentOrchestrator/AgentOrchestrator.csproj",
         "projectName": "AgentOrchestrator",
-        "projectPath": "/Users/tk/src/chat_api_lab/src/AgentOrchestrator/AgentOrchestrator.csproj",
+        "projectPath": "/Users/tk/src/chat_api_lab_public/src/AgentOrchestrator/AgentOrchestrator.csproj",
         "packagesPath": "/Users/tk/.nuget/packages/",
-        "outputPath": "/Users/tk/src/chat_api_lab/src/AgentOrchestrator/obj/",
+        "outputPath": "/Users/tk/src/chat_api_lab_public/src/AgentOrchestrator/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/tk/.nuget/NuGet/NuGet.Config"
@@ -52,6 +52,10 @@
               "target": "Package",
               "version": "[1.1.151, )"
             },
+            "Microsoft.Extensions.Http.Resilience": {
+              "target": "Package",
+              "version": "[9.1.0, )"
+            },
             "Microsoft.Identity.Web": {
               "target": "Package",
               "version": "[3.8.2, )"
@@ -87,6 +91,10 @@
             "Microsoft.SemanticKernel.Connectors.AzureOpenAI": {
               "target": "Package",
               "version": "[1.54.0, )"
+            },
+            "Swashbuckle.AspNetCore": {
+              "target": "Package",
+              "version": "[7.2.0, )"
             }
           },
           "imports": [

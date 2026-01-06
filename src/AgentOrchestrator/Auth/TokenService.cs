@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Identity.Client;
 using AgentOrchestrator.Models;
 
@@ -8,7 +9,7 @@ public interface ITokenService
     Task<string> GetAccessTokenAsync(string sessionId);
     Task<AuthenticationResult> AcquireTokenByAuthorizationCodeAsync(string code, string sessionId);
     void ClearTokenCache(string sessionId);
-    string BuildAuthorizationUrl(string state);
+    Task<string> BuildAuthorizationUrlAsync(string state);
 }
 
 public class TokenService : ITokenService
@@ -16,8 +17,13 @@ public class TokenService : ITokenService
     private readonly IConfidentialClientApplication _msalClient;
     private readonly AzureAdSettings _settings;
     private readonly ILogger<TokenService> _logger;
-    private readonly Dictionary<string, AuthenticationResult> _tokenCache = new();
-    private readonly object _cacheLock = new();
+
+    // Thread-safe caches
+    // TODO: For production, implement distributed cache:
+    // - Redis: Use IDistributedCache with StackExchangeRedis
+    // - MSAL serialization: _msalClient.UserTokenCache.SetBeforeAccess/SetAfterAccess
+    private readonly ConcurrentDictionary<string, AuthenticationResult> _tokenCache = new();
+    private readonly ConcurrentDictionary<string, string> _accountIdentifiers = new();
 
     public TokenService(AzureAdSettings settings, ILogger<TokenService> logger)
     {
@@ -28,20 +34,18 @@ public class TokenService : ITokenService
             .Create(settings.ClientId)
             .WithClientSecret(settings.ClientSecret)
             .WithAuthority($"{settings.Instance}{settings.TenantId}")
-            .WithRedirectUri($"http://localhost:5000{settings.CallbackPath}")
+            .WithRedirectUri(settings.RedirectUri)
             .Build();
     }
 
-    public string BuildAuthorizationUrl(string state)
+    public async Task<string> BuildAuthorizationUrlAsync(string state)
     {
         var scopes = _settings.Scopes;
 
-        var authUrl = _msalClient
+        var authUrl = await _msalClient
             .GetAuthorizationRequestUrl(scopes)
             .WithExtraQueryParameters($"state={Uri.EscapeDataString(state)}")
-            .ExecuteAsync()
-            .GetAwaiter()
-            .GetResult();
+            .ExecuteAsync();
 
         return authUrl.ToString();
     }
@@ -54,9 +58,12 @@ public class TokenService : ITokenService
             .AcquireTokenByAuthorizationCode(scopes, code)
             .ExecuteAsync();
 
-        lock (_cacheLock)
+        _tokenCache[sessionId] = result;
+
+        // Store account identifier for proper token refresh (fixes deprecated GetAccountsAsync)
+        if (result.Account?.HomeAccountId?.Identifier != null)
         {
-            _tokenCache[sessionId] = result;
+            _accountIdentifiers[sessionId] = result.Account.HomeAccountId.Identifier;
         }
 
         _logger.LogInformation("Token acquired for session {SessionId}", sessionId);
@@ -65,14 +72,7 @@ public class TokenService : ITokenService
 
     public async Task<string> GetAccessTokenAsync(string sessionId)
     {
-        AuthenticationResult? cachedResult;
-
-        lock (_cacheLock)
-        {
-            _tokenCache.TryGetValue(sessionId, out cachedResult);
-        }
-
-        if (cachedResult == null)
+        if (!_tokenCache.TryGetValue(sessionId, out var cachedResult))
         {
             throw new InvalidOperationException("No token found for session. Please login first.");
         }
@@ -84,22 +84,23 @@ public class TokenService : ITokenService
 
             try
             {
-                var accounts = await _msalClient.GetAccountsAsync();
-                var account = accounts.FirstOrDefault();
-
-                if (account != null)
+                // Use stored account identifier instead of deprecated GetAccountsAsync()
+                if (_accountIdentifiers.TryGetValue(sessionId, out var accountIdentifier))
                 {
-                    var result = await _msalClient
-                        .AcquireTokenSilent(_settings.Scopes, account)
-                        .ExecuteAsync();
+                    var account = await _msalClient.GetAccountAsync(accountIdentifier);
 
-                    lock (_cacheLock)
+                    if (account != null)
                     {
-                        _tokenCache[sessionId] = result;
-                    }
+                        var result = await _msalClient
+                            .AcquireTokenSilent(_settings.Scopes, account)
+                            .ExecuteAsync();
 
-                    return result.AccessToken;
+                        _tokenCache[sessionId] = result;
+                        return result.AccessToken;
+                    }
                 }
+
+                _logger.LogWarning("No account identifier found for session {SessionId}", sessionId);
             }
             catch (MsalUiRequiredException)
             {
@@ -113,10 +114,8 @@ public class TokenService : ITokenService
 
     public void ClearTokenCache(string sessionId)
     {
-        lock (_cacheLock)
-        {
-            _tokenCache.Remove(sessionId);
-        }
+        _tokenCache.TryRemove(sessionId, out _);
+        _accountIdentifiers.TryRemove(sessionId, out _);
 
         _logger.LogInformation("Token cache cleared for session {SessionId}", sessionId);
     }

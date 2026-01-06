@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 
 namespace AgentOrchestrator.Plugins;
@@ -6,10 +7,12 @@ namespace AgentOrchestrator.Plugins;
 public class AzureOpenAIPlugin
 {
     private readonly Kernel _kernel;
+    private readonly ILogger<AzureOpenAIPlugin>? _logger;
 
-    public AzureOpenAIPlugin(Kernel kernel)
+    public AzureOpenAIPlugin(Kernel kernel, ILogger<AzureOpenAIPlugin>? logger = null)
     {
         _kernel = kernel;
+        _logger = logger;
     }
 
     [KernelFunction]
@@ -18,6 +21,7 @@ public class AzureOpenAIPlugin
         [Description("The general knowledge question to answer")] string query,
         CancellationToken cancellationToken = default)
     {
+        _logger?.LogInformation("Processing general knowledge query: {Query}", query);
         var prompt = $"""
             You are a helpful AI assistant. Answer the following question clearly and concisely.
 

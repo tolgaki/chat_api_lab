@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 
 namespace AgentOrchestrator.Plugins;
@@ -6,10 +7,12 @@ namespace AgentOrchestrator.Plugins;
 public class SynthesisPlugin
 {
     private readonly Kernel _kernel;
+    private readonly ILogger<SynthesisPlugin>? _logger;
 
-    public SynthesisPlugin(Kernel kernel)
+    public SynthesisPlugin(Kernel kernel, ILogger<SynthesisPlugin>? logger = null)
     {
         _kernel = kernel;
+        _logger = logger;
     }
 
     [KernelFunction]
@@ -19,6 +22,7 @@ public class SynthesisPlugin
         [Description("JSON array of agent responses to synthesize")] string responses,
         CancellationToken cancellationToken = default)
     {
+        _logger?.LogInformation("Synthesizing responses for query: {Query}", originalQuery);
         var prompt = $"""
             You are a response synthesizer. Your job is to combine multiple agent responses into a single,
             coherent response that addresses the user's original query.
