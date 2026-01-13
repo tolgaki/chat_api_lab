@@ -10,6 +10,25 @@ using CopilotLocationHint = AgentOrchestrator.CopilotSdk.Models.LocationHint;
 
 namespace AgentOrchestrator.Plugins;
 
+/// <summary>
+/// Semantic Kernel Plugin for Microsoft 365 Copilot Chat API integration.
+///
+/// SEMANTIC KERNEL CONCEPTS:
+/// - [KernelFunction]: Exposes method to the AI orchestrator
+/// - [Description]: Helps LLM understand when to use this function
+/// - Parameters with [Description]: Helps LLM provide correct arguments
+///
+/// The Kernel can invoke these functions based on user intent,
+/// allowing natural language to trigger specific API calls.
+///
+/// COPILOT CHAT API:
+/// - Endpoint: /beta/copilot/conversations (Beta API - subject to change)
+/// - Two-step process: Create conversation, then send chat message
+/// - Returns M365 data (emails, calendar, files) in natural language
+/// - Requires per-user Copilot license
+///
+/// See: https://learn.microsoft.com/graph/api/resources/copilot-api-overview
+/// </summary>
 public class M365CopilotPlugin
 {
     private readonly IHttpClientFactory _httpClientFactory;
@@ -97,7 +116,7 @@ public class M365CopilotPlugin
             var chatRequest = new CopilotChatRequest
             {
                 Message = new CopilotMessageParameter { Text = query },
-                LocationHint = new CopilotLocationHint { TimeZone = "UTC" }
+                LocationHint = new CopilotLocationHint { TimeZone = "America/Los_Angeles" }
             };
 
             _logger.LogInformation("Sending chat message...");
@@ -171,8 +190,14 @@ public class M365CopilotPlugin
 }
 
 /// <summary>
-/// Simple token provider that returns a pre-obtained access token.
-/// Only provides tokens for Microsoft Graph API hosts.
+/// SECURITY: Token provider that restricts which hosts receive the access token.
+///
+/// Why this matters:
+/// - Access tokens should only be sent to intended APIs
+/// - If a redirect or misconfiguration sends requests elsewhere, token won't leak
+/// - AllowedHostsValidator is a defense-in-depth measure
+///
+/// Only Microsoft Graph hosts are allowed to receive this token.
 /// </summary>
 internal class TokenProvider : IAccessTokenProvider
 {

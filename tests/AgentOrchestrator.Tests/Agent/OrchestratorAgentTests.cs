@@ -73,6 +73,8 @@ public class OrchestratorAgentTests
 
         // Assert
         Assert.Equal(5, settings.MaxAgentCalls);
+        // NOTE: Default is 30s but lab config uses 120s for Copilot API latency
+        // This test verifies the model default, not the configured value
         Assert.Equal(30, settings.TimeoutSeconds);
         Assert.True(settings.EnableParallelExecution);
     }

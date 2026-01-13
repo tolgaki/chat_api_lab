@@ -18,13 +18,9 @@ public static class AuthEndpoints
         HttpContext context,
         ITokenService tokenService)
     {
-        // Generate or get session ID
-        var sessionId = context.Session.GetString("SessionId");
-        if (string.IsNullOrEmpty(sessionId))
-        {
-            sessionId = Guid.NewGuid().ToString();
-            context.Session.SetString("SessionId", sessionId);
-        }
+        // Use framework session ID for consistency with OrchestratorAgent
+        // This ensures token storage and retrieval use the same key
+        var sessionId = context.Session.Id;
 
         // Build authorization URL with state parameter for CSRF protection
         var state = Convert.ToBase64String(Guid.NewGuid().ToByteArray());
@@ -62,12 +58,8 @@ public static class AuthEndpoints
             return Results.BadRequest(new { error = "Invalid state parameter" });
         }
 
-        var sessionId = context.Session.GetString("SessionId");
-        if (string.IsNullOrEmpty(sessionId))
-        {
-            sessionId = Guid.NewGuid().ToString();
-            context.Session.SetString("SessionId", sessionId);
-        }
+        // Use framework session ID for consistency with OrchestratorAgent
+        var sessionId = context.Session.Id;
 
         try
         {
@@ -85,7 +77,14 @@ public static class AuthEndpoints
         }
         catch (Exception ex)
         {
-            return Results.BadRequest(new { error = "Token acquisition failed", details = ex.Message });
+            // SECURITY: Never expose exception details to clients.
+            // Exception messages can reveal file paths, library versions, database schemas,
+            // and other information useful to attackers.
+            // Always log full details server-side, return generic message to client.
+            var loggerFactory = context.RequestServices.GetRequiredService<ILoggerFactory>();
+            var logger = loggerFactory.CreateLogger("AuthEndpoints");
+            logger.LogError(ex, "Token acquisition failed during OAuth callback");
+            return Results.BadRequest(new { error = "Authentication failed. Please try again." });
         }
     }
 
@@ -93,11 +92,9 @@ public static class AuthEndpoints
         HttpContext context,
         ITokenService tokenService)
     {
-        var sessionId = context.Session.GetString("SessionId");
-        if (!string.IsNullOrEmpty(sessionId))
-        {
-            tokenService.ClearTokenCache(sessionId);
-        }
+        // Use framework session ID for consistency
+        var sessionId = context.Session.Id;
+        tokenService.ClearTokenCache(sessionId);
 
         context.Session.Clear();
 

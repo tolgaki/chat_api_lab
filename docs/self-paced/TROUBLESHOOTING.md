@@ -122,19 +122,37 @@ Error: "Access denied. Check that the user has a valid license."
 2. Verify "Microsoft 365 Copilot" is enabled
 3. Wait up to 24 hours for license propagation
 
-**Cause 2**: Missing `Chat.Read` permission
+**Cause 2**: Missing required API permissions
 
 **Diagnosis**:
 ```
 POST /beta/copilot/conversations returns 403
-Error: "Insufficient privileges to complete the operation."
+Response body: {
+  "error": {
+    "code": "unauthorized",
+    "message": "Required scopes = [Sites.Read.All, Mail.Read, People.Read.All,
+                OnlineMeetingTranscript.Read.All, Chat.Read, ChannelMessage.Read.All,
+                ExternalItem.Read.All]."
+  }
+}
 ```
 
 **Solution**:
 1. Azure Portal → App registrations → Your app → API permissions
-2. Add `Chat.Read` (Delegated) permission
-3. Grant admin consent
+2. Add ALL required delegated permissions:
+   - `Mail.Read`
+   - `Calendars.Read`
+   - `Files.Read.All`
+   - `Sites.Read.All`
+   - `People.Read.All` (not `People.Read`)
+   - `Chat.Read`
+   - `ChannelMessage.Read.All`
+   - `OnlineMeetingTranscript.Read.All`
+   - `ExternalItem.Read.All`
+3. Click **Grant admin consent for [your tenant]**
 4. Re-login in the application
+
+> **Important**: The error response body contains the exact list of missing scopes. Always check the response body, not just the status code.
 
 **Cause 3**: Copilot not enabled for tenant
 

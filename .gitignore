@@ -1,0 +1,47 @@
+# .NET
+bin/
+obj/
+*.dll
+*.exe
+*.pdb
+
+# IDE
+.vs/
+.vscode/
+*.suo
+*.user
+.idea/
+
+# ============================================================================
+# SECURITY: Prevent accidental secret commits
+# ============================================================================
+# Development settings with secrets - NEVER commit these
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.local.json
+secrets.json
+
+# Environment files that may contain secrets
+.env
+.env.*
+!.env.example
+
+# User secrets reference (actual secrets stored in ~/.microsoft/usersecrets/)
+# This is just a reminder - user secrets are already outside the repo
+# ============================================================================
+
+# Build outputs
+publish/
+out/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp

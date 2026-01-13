@@ -118,7 +118,10 @@ const Chat = {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(activity)
+            body: JSON.stringify(activity),
+            // SECURITY: Required for session cookies to be sent with the request
+            // Without this, the server won't receive the authentication session
+            credentials: 'include'
         });
 
         if (!response.ok) {

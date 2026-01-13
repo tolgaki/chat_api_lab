@@ -71,23 +71,26 @@ This lab demonstrates how to build a **.NET 10 Agent** using the **Microsoft 365
    cd src/AgentOrchestrator
    ```
 
-2. **Configure the application:**
+2. **Configure secrets using .NET User Secrets (recommended):**
 
-   Update `appsettings.json` with your credentials:
-   ```json
-   {
-     "AzureAd": {
-       "TenantId": "<your-tenant-id>",
-       "ClientId": "<your-client-id>",
-       "ClientSecret": "<your-client-secret>"
-     },
-     "AzureOpenAI": {
-       "Endpoint": "https://<your-resource>.openai.azure.com/",
-       "ApiKey": "<your-api-key>",
-       "DeploymentName": "gpt-4o"
-     }
-   }
+   > **SECURITY:** Never commit secrets to version control. Use user-secrets for development.
+
+   ```bash
+   # Initialize user secrets
+   dotnet user-secrets init
+
+   # Set Azure AD credentials
+   dotnet user-secrets set "AzureAd:TenantId" "your-tenant-id"
+   dotnet user-secrets set "AzureAd:ClientId" "your-client-id"
+   dotnet user-secrets set "AzureAd:ClientSecret" "your-client-secret"
+
+   # Set Azure OpenAI credentials
+   dotnet user-secrets set "AzureOpenAI:Endpoint" "https://your-resource.openai.azure.com/"
+   dotnet user-secrets set "AzureOpenAI:ApiKey" "your-api-key"
+   dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-4o"
    ```
+
+   Alternatively, copy `appsettings.Development.json.template` to `appsettings.Development.json` and fill in values (but never commit this file).
 
 3. **Run the application:**
    ```bash
@@ -166,6 +169,78 @@ The Copilot Chat API (`/beta/copilot/conversations`) enables:
 - Programmatic access to M365 Copilot via Kiota-generated SDK
 - Enterprise data grounding (emails, calendar, files, people)
 - Synchronous conversational interactions
+
+---
+
+## For Lab Participants
+
+### Security Notice
+
+This lab uses simplified patterns for educational purposes. Pay attention to these markers in the code:
+
+| Marker | Meaning |
+|--------|---------|
+| `// SECURITY:` | Security best practices - important to understand |
+| `// LAB SIMPLIFICATION:` | Patterns that need hardening for production |
+| `// PRODUCTION:` | What you'd do differently in production |
+
+**Key differences from production code:**
+- **Secrets:** Lab uses `appsettings.json` template; production uses Azure Key Vault
+- **Token Cache:** Lab uses in-memory; production uses Redis or SQL Server
+- **Session Storage:** Lab uses in-memory; production uses distributed cache
+- **HTTP:** Lab runs on HTTP; production requires HTTPS
+
+### Common Issues
+
+See [TROUBLESHOOTING.md](docs/self-paced/TROUBLESHOOTING.md) for solutions to common problems.
+
+### Request Flow Diagram
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant WebUI
+    participant AuthMiddleware
+    participant OrchestratorAgent
+    participant IntentPlugin
+    participant M365CopilotPlugin
+    participant AzureOpenAI
+    participant CopilotAPI
+
+    User->>WebUI: Send message
+    WebUI->>AuthMiddleware: POST /api/messages
+    AuthMiddleware->>AuthMiddleware: Validate session
+    AuthMiddleware->>OrchestratorAgent: Process activity
+
+    OrchestratorAgent->>IntentPlugin: Analyze intent
+    IntentPlugin->>AzureOpenAI: Classify query
+    AzureOpenAI-->>IntentPlugin: [M365Email, GeneralKnowledge]
+
+    par Parallel Execution
+        OrchestratorAgent->>M365CopilotPlugin: Query emails
+        M365CopilotPlugin->>CopilotAPI: POST /beta/copilot/conversations
+        CopilotAPI-->>M365CopilotPlugin: Conversation ID
+        M365CopilotPlugin->>CopilotAPI: POST .../chat
+        CopilotAPI-->>M365CopilotPlugin: Email summary
+    and
+        OrchestratorAgent->>AzureOpenAI: General knowledge
+        AzureOpenAI-->>OrchestratorAgent: Response
+    end
+
+    OrchestratorAgent->>OrchestratorAgent: Synthesize responses
+    OrchestratorAgent-->>WebUI: Final response
+    WebUI-->>User: Display response
+```
+
+### Learning Objectives
+
+After completing this lab, you should understand:
+
+1. **Microsoft 365 Agents SDK** - How to build agents using `AgentApplication`
+2. **Semantic Kernel** - Plugin pattern with `[KernelFunction]` attributes
+3. **OAuth 2.0** - Authorization code flow with MSAL
+4. **M365 Copilot Chat API** - Two-step conversation pattern
+5. **Resilience Patterns** - Retry, circuit breaker, and timeout handling
 
 ## License
 

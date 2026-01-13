@@ -1,6 +1,7 @@
 using System.Threading.RateLimiting;
 using AgentOrchestrator.Agent;
 using AgentOrchestrator.Auth;
+using AgentOrchestrator.Constants;
 using AgentOrchestrator.Models;
 using AgentOrchestrator.Plugins;
 using Microsoft.Agents.Builder;
@@ -9,6 +10,15 @@ using Microsoft.Agents.Storage;
 using Microsoft.SemanticKernel;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ============================================================================
+// CONFIGURATION
+// ============================================================================
+// SECURITY: Secrets (ClientSecret, ApiKey) should be loaded from:
+// - Development: dotnet user-secrets (see appsettings.Development.json.template)
+// - Production: Azure Key Vault or environment variables
+// Never commit secrets to version control!
+// ============================================================================
 
 // === Load Configuration ===
 var azureAdSettings = builder.Configuration.GetSection("AzureAd").Get<AzureAdSettings>()
@@ -29,17 +39,36 @@ builder.Services.AddSingleton(azureOpenAISettings);
 builder.Services.AddSingleton(graphSettings);
 builder.Services.AddSingleton(orchestrationSettings);
 
-// === Session Support (for web auth) ===
-// TODO: For production deployment with multiple instances, replace with:
+// ============================================================================
+// SESSION MANAGEMENT
+// ============================================================================
+// LAB SIMPLIFICATION: Using in-memory session storage for single-instance development.
+//
+// PRODUCTION requirements for multi-instance deployments:
 // - Redis: builder.Services.AddStackExchangeRedisCache(options => { options.Configuration = "..."; });
 // - SQL Server: builder.Services.AddDistributedSqlServerCache(options => { ... });
+// - Azure Cache for Redis is recommended for cloud deployments
+//
+// Without distributed cache, sessions are lost on app restart and users must re-login.
+// ============================================================================
 builder.Services.AddDistributedMemoryCache(); // Single-instance only
 builder.Services.AddSession(options =>
 {
     options.IdleTimeout = TimeSpan.FromHours(1);
+
+    // SECURITY: HttpOnly prevents JavaScript access to session cookie
+    // This mitigates XSS attacks that try to steal session tokens
     options.Cookie.HttpOnly = true;
+
     options.Cookie.IsEssential = true;
+
+    // SECURITY: SameSite prevents CSRF by not sending cookie on cross-site requests
+    // Lax: Cookie sent on top-level navigation (GET) but not on cross-site POST
+    // Strict: Cookie never sent on cross-site requests (more secure but may break OAuth)
     options.Cookie.SameSite = SameSiteMode.Lax;
+
+    // PRODUCTION: Add these for HTTPS deployments
+    // options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 });
 
 builder.Services.AddHttpContextAccessor();
@@ -47,15 +76,32 @@ builder.Services.AddHttpContextAccessor();
 // === Auth Services ===
 builder.Services.AddSingleton<ITokenService, TokenService>();
 
-// === HTTP Client for Graph API with Resilience ===
+// ============================================================================
+// HTTP CLIENT WITH RESILIENCE
+// ============================================================================
+// RELIABILITY: Standard resilience handler adds multiple protection layers:
+//
+// 1. Retry: Automatically retry failed requests (handles transient failures)
+// 2. Circuit Breaker: Stop calling failing services (prevents cascade failures)
+// 3. Timeout: Limit how long to wait (prevents resource exhaustion)
+//
+// These patterns are essential for production cloud applications.
+// See: https://learn.microsoft.com/dotnet/core/resilience
+// ============================================================================
 builder.Services.AddHttpClient("Graph")
     .AddStandardResilienceHandler(options =>
     {
+        // Retry up to 3 times with 1 second delay between attempts
         options.Retry.MaxRetryAttempts = 3;
         options.Retry.Delay = TimeSpan.FromSeconds(1);
-        options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
-        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(10);
-        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(30);
+
+        // Circuit breaker: If requests fail repeatedly, stop trying for a period
+        // SamplingDuration must be >= 2x AttemptTimeout per library requirements
+        options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(240);
+
+        // Copilot API can take 10-30 seconds to respond
+        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(120);
+        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(120);
     });
 
 // === Semantic Kernel Setup ===
@@ -76,29 +122,33 @@ builder.Services.AddSingleton<Kernel>(sp =>
     var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
 
     // Register plugins with logging
+    // BEST PRACTICE: Use constants for plugin names to prevent typos
     kernel.Plugins.AddFromObject(
         new IntentPlugin(kernel, loggerFactory.CreateLogger<IntentPlugin>()),
-        "IntentPlugin");
+        PluginNames.Intent);
 
     kernel.Plugins.AddFromObject(
         new AzureOpenAIPlugin(kernel, loggerFactory.CreateLogger<AzureOpenAIPlugin>()),
-        "AzureOpenAIPlugin");
+        PluginNames.AzureOpenAI);
 
     kernel.Plugins.AddFromObject(
         new M365CopilotPlugin(
             sp.GetRequiredService<IHttpClientFactory>(),
             sp.GetRequiredService<MicrosoftGraphSettings>(),
             sp.GetRequiredService<ILogger<M365CopilotPlugin>>()),
-        "M365CopilotPlugin");
+        PluginNames.M365Copilot);
 
     kernel.Plugins.AddFromObject(
         new SynthesisPlugin(kernel, loggerFactory.CreateLogger<SynthesisPlugin>()),
-        "SynthesisPlugin");
+        PluginNames.Synthesis);
 
     return kernel;
 });
 
 // === M365 Agents SDK Setup ===
+// LAB SIMPLIFICATION: MemoryStorage stores conversation state in-memory.
+// State is lost on app restart. For production, implement IStorage with
+// Azure Cosmos DB, SQL Server, or Azure Blob Storage.
 builder.Services.AddSingleton<IStorage, MemoryStorage>();
 
 // Add AgentApplicationOptions from configuration
@@ -108,6 +158,10 @@ builder.AddAgentApplicationOptions();
 builder.AddAgent<OrchestratorAgent>();
 
 // === CORS Configuration ===
+// SECURITY: Configure CORS with least privilege principle
+// - Specify exact methods needed (not AllowAnyMethod)
+// - Specify exact headers needed (not AllowAnyHeader)
+// - Be cautious with AllowCredentials (enables cookie-based requests)
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -115,13 +169,24 @@ builder.Services.AddCors(options =>
         var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
             ?? ["http://localhost:5000"];
         policy.WithOrigins(allowedOrigins)
-              .AllowAnyMethod()
-              .AllowAnyHeader()
+              .WithMethods("GET", "POST")           // Only methods we actually need
+              .WithHeaders("Content-Type")          // Only headers we actually need
               .AllowCredentials();
     });
 });
 
-// === Rate Limiting ===
+// ============================================================================
+// RATE LIMITING
+// ============================================================================
+// SECURITY: Rate limiting prevents abuse and DoS attacks.
+// This implementation limits by IP address, which has tradeoffs:
+//
+// Pros: Works for unauthenticated endpoints, simple to implement
+// Cons: Users behind NAT/proxy share limits, can be bypassed with IP rotation
+//
+// PRODUCTION: Also rate limit by authenticated user ID for API endpoints,
+// with higher limits for authenticated users.
+// ============================================================================
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -174,6 +239,10 @@ app.UseCors();
 app.UseRateLimiter();
 
 // === Health Check Endpoints ===
+// OPERATIONS: Health check endpoints for container orchestration (Kubernetes, etc.)
+// /health - Liveness probe: Is the application running?
+// /ready  - Readiness probe: Is the application ready to serve traffic?
+// See: https://learn.microsoft.com/aspnet/core/host-and-deploy/health-checks
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/ready");
 

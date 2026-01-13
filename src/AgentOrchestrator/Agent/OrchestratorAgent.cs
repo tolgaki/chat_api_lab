@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AgentOrchestrator.Auth;
+using AgentOrchestrator.Constants;
 using AgentOrchestrator.Models;
 using Microsoft.Agents.Builder;
 using Microsoft.Agents.Builder.App;
@@ -132,7 +133,7 @@ public class OrchestratorAgent : AgentApplication
     private async Task<List<Intent>> AnalyzeIntentAsync(string query, CancellationToken cancellationToken)
     {
         var result = await _kernel.InvokeAsync(
-            "IntentPlugin",
+            PluginNames.Intent,
             "AnalyzeIntent",
             new() { ["query"] = query },
             cancellationToken);
@@ -145,11 +146,20 @@ public class OrchestratorAgent : AgentApplication
             {
                 PropertyNameCaseInsensitive = true
             });
-            return intents ?? [new Intent { Type = IntentType.GeneralKnowledge, Query = query }];
+
+            if (intents == null || intents.Count == 0)
+            {
+                _logger.LogWarning("Intent analysis returned empty results for query: {Query}", query);
+                return [new Intent { Type = IntentType.GeneralKnowledge, Query = query }];
+            }
+
+            return intents;
         }
         catch (JsonException ex)
         {
-            _logger.LogWarning(ex, "Failed to parse intents, defaulting to general knowledge");
+            // DEBUGGING TIP: Always log the actual response when JSON parsing fails.
+            // This helps identify if the LLM is returning unexpected formats.
+            _logger.LogWarning(ex, "Failed to parse intent response. Raw JSON: {Json}. Defaulting to general knowledge.", json);
             return [new Intent { Type = IntentType.GeneralKnowledge, Query = query }];
         }
     }
@@ -221,7 +231,7 @@ public class OrchestratorAgent : AgentApplication
         CancellationToken cancellationToken)
     {
         var result = await _kernel.InvokeAsync(
-            "M365CopilotPlugin",
+            PluginNames.M365Copilot,
             functionName,
             new()
             {
@@ -251,7 +261,7 @@ public class OrchestratorAgent : AgentApplication
         CancellationToken cancellationToken)
     {
         var result = await _kernel.InvokeAsync(
-            "AzureOpenAIPlugin",
+            PluginNames.AzureOpenAI,
             "GeneralKnowledge",
             new() { ["query"] = query },
             cancellationToken);
@@ -290,7 +300,7 @@ public class OrchestratorAgent : AgentApplication
         }));
 
         var result = await _kernel.InvokeAsync(
-            "SynthesisPlugin",
+            PluginNames.Synthesis,
             "Synthesize",
             new()
             {

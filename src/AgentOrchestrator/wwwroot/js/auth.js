@@ -5,7 +5,8 @@ const Auth = {
 
     async checkStatus() {
         try {
-            const response = await fetch('/auth/status');
+            // credentials: 'include' ensures session cookies are sent with the request
+            const response = await fetch('/auth/status', { credentials: 'include' });
             const data = await response.json();
 
             this.isAuthenticated = data.isAuthenticated;
@@ -25,7 +26,7 @@ const Auth = {
 
     async logout() {
         try {
-            await fetch('/auth/logout', { method: 'POST' });
+            await fetch('/auth/logout', { method: 'POST', credentials: 'include' });
             this.isAuthenticated = false;
             this.userName = null;
             this.updateUI();

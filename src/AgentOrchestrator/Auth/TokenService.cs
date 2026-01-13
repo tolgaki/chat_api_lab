@@ -12,16 +12,38 @@ public interface ITokenService
     Task<string> BuildAuthorizationUrlAsync(string state);
 }
 
+/// <summary>
+/// Token management service using Microsoft Authentication Library (MSAL).
+///
+/// MSAL CONCEPTS:
+/// - ConfidentialClientApplication: Server-side apps with secure secret storage
+/// - AcquireTokenByAuthorizationCode: Exchange OAuth code for tokens
+/// - AcquireTokenSilent: Get cached token or refresh automatically
+///
+/// See: https://learn.microsoft.com/azure/active-directory/develop/msal-overview
+/// </summary>
 public class TokenService : ITokenService
 {
     private readonly IConfidentialClientApplication _msalClient;
     private readonly AzureAdSettings _settings;
     private readonly ILogger<TokenService> _logger;
 
-    // Thread-safe caches
-    // TODO: For production, implement distributed cache:
-    // - Redis: Use IDistributedCache with StackExchangeRedis
-    // - MSAL serialization: _msalClient.UserTokenCache.SetBeforeAccess/SetAfterAccess
+    // ========================================================================
+    // LAB SIMPLIFICATION: In-memory token cache using ConcurrentDictionary.
+    //
+    // This works for single-instance development but has limitations:
+    // - Tokens lost on application restart
+    // - Cannot scale to multiple instances
+    // - No encryption at rest
+    //
+    // PRODUCTION requirements:
+    // - Use Redis or SQL Server for distributed token cache
+    // - Encrypt tokens at rest using DPAPI or Azure Key Vault
+    // - Implement MSAL token cache serialization:
+    //   _msalClient.UserTokenCache.SetBeforeAccess/SetAfterAccess
+    //
+    // See: https://learn.microsoft.com/azure/active-directory/develop/msal-net-token-cache-serialization
+    // ========================================================================
     private readonly ConcurrentDictionary<string, AuthenticationResult> _tokenCache = new();
     private readonly ConcurrentDictionary<string, string> _accountIdentifiers = new();
 

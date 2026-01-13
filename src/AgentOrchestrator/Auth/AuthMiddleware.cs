@@ -1,10 +1,25 @@
 namespace AgentOrchestrator.Auth;
 
+/// <summary>
+/// Custom authentication middleware for session-based auth.
+///
+/// MIDDLEWARE PATTERN:
+/// - Middleware intercepts every HTTP request in the pipeline
+/// - Can short-circuit the pipeline (return early) or pass to next middleware
+/// - Order matters: this runs after UseSession() but before endpoint routing
+///
+/// SECURITY CONSIDERATIONS:
+/// - Public paths are explicitly allowlisted (safe default: deny all)
+/// - Session-based auth requires cookies (credentials: 'include' in fetch)
+/// - Path matching must be precise to prevent bypasses
+/// </summary>
 public class AuthMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly ILogger<AuthMiddleware> _logger;
 
+    // SECURITY: Explicit allowlist of public paths (deny by default)
+    // Be careful when adding paths - each one bypasses authentication
     private static readonly string[] PublicPaths =
     [
         "/auth/login",
@@ -47,6 +62,19 @@ public class AuthMiddleware
         await _next(context);
     }
 
+    /// <summary>
+    /// SECURITY: Path matching for authorization must be precise.
+    /// We check for exact match OR path prefix to handle:
+    /// - /auth/login (exact public path)
+    /// - /css/styles.css (file under public directory)
+    /// - /js/chat.js (file under public directory)
+    ///
+    /// WARNING: Be careful with path matching - attackers may try:
+    /// - Path traversal: /css/../api/messages
+    /// - URL encoding: /api%2Fmessages
+    /// - Case variations: /API/messages
+    /// ASP.NET Core normalizes paths, but always validate carefully.
+    /// </summary>
     private static bool IsPublicPath(string path)
     {
         foreach (var publicPath in PublicPaths)

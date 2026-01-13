@@ -97,12 +97,17 @@ In your app registration:
    - `Calendars.Read`
    - `Files.Read.All`
    - `Sites.Read.All`
-   - `People.Read`
+   - `People.Read.All` - Required for people/org queries
 
    **Copilot Chat API permissions:**
    - `Chat.Read` - Required for reading Copilot chat responses
+   - `ChannelMessage.Read.All` - Required for Teams channel context
+   - `OnlineMeetingTranscript.Read.All` - Required for meeting transcript context
+   - `ExternalItem.Read.All` - Required for external data source context
 
 4. Click **Grant admin consent for [your tenant]**
+
+> **Important**: All 7 M365/Copilot permissions are required for the Copilot Chat API to function correctly. Missing any of these will result in a `403 Forbidden` error with a message listing the required scopes.
 
 > **Note**: The Copilot Chat API uses delegated permissions, meaning it operates in the context of the signed-in user and respects their M365 permissions.
 
@@ -197,10 +202,14 @@ Before running the lab, verify the API works for your account:
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | `403 Forbidden` | Missing Copilot license | Assign license in Admin Center |
-| `403 Forbidden` | Missing permissions | Add `Chat.Read` permission, grant admin consent |
+| `403 Forbidden` with "Required scopes" message | Missing API permissions | Add all required permissions (see section 4), grant admin consent |
+| `403 Forbidden` | Insufficient permissions | Verify all 7 M365/Copilot scopes are granted with admin consent |
 | `404 Not Found` | Wrong endpoint | Ensure using `/beta/copilot/conversations` |
 | Empty response | Query not understood | Try rephrasing; check Copilot can access the data |
 | `401 Unauthorized` | Token expired | Re-authenticate |
+| Timeout errors | Copilot API slow response | API can take 10-30 seconds; ensure adequate timeouts |
+
+> **Debugging 403 errors**: The Copilot API response body contains the exact list of required scopes. Check the response body (not just the status code) to see which scopes are missing.
 
 ### Chat API vs Direct M365 APIs
 
