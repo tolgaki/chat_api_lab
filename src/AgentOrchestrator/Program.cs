@@ -1,6 +1,5 @@
-using System.Threading.RateLimiting;
+using AgentOrchestrator;
 using AgentOrchestrator.Agent;
-using AgentOrchestrator.Auth;
 using AgentOrchestrator.Constants;
 using AgentOrchestrator.Models;
 using AgentOrchestrator.Plugins;
@@ -8,6 +7,7 @@ using Microsoft.Agents.Builder;
 using Microsoft.Agents.Hosting.AspNetCore;
 using Microsoft.Agents.Storage;
 using Microsoft.SemanticKernel;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -20,11 +20,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Never commit secrets to version control!
 // ============================================================================
 
-// === Load Configuration ===
-var azureAdSettings = builder.Configuration.GetSection("AzureAd").Get<AzureAdSettings>()
-    ?? throw new InvalidOperationException("AzureAd configuration is required");
+//// === Load Configuration ===
+//var azureAdSettings = builder.Configuration.GetSection("AzureAd").Get<AzureAdSettings>()
+//    ?? throw new InvalidOperationException("AzureAd configuration is required");
 
-var azureOpenAISettings = builder.Configuration.GetSection("AzureOpenAI").Get<AzureOpenAISettings>()
+var azureOpenAISettings = builder.Configuration.GetSection("AIServices:AzureOpenAI").Get<AzureOpenAISettings>()
     ?? throw new InvalidOperationException("AzureOpenAI configuration is required");
 
 var graphSettings = builder.Configuration.GetSection("MicrosoftGraph").Get<MicrosoftGraphSettings>()
@@ -34,7 +34,7 @@ var orchestrationSettings = builder.Configuration.GetSection("Orchestration").Ge
     ?? new OrchestrationSettings();
 
 // Register configuration as singletons
-builder.Services.AddSingleton(azureAdSettings);
+//builder.Services.AddSingleton(azureAdSettings);
 builder.Services.AddSingleton(azureOpenAISettings);
 builder.Services.AddSingleton(graphSettings);
 builder.Services.AddSingleton(orchestrationSettings);
@@ -74,7 +74,7 @@ builder.Services.AddSession(options =>
 builder.Services.AddHttpContextAccessor();
 
 // === Auth Services ===
-builder.Services.AddSingleton<ITokenService, TokenService>();
+//builder.Services.AddSingleton<ITokenService, TokenService>();
 
 // ============================================================================
 // HTTP CLIENT WITH RESILIENCE
@@ -121,29 +121,11 @@ builder.Services.AddSingleton<Kernel>(sp =>
     // Get logger factory for plugin logging
     var loggerFactory = sp.GetRequiredService<ILoggerFactory>();
 
-    // Register plugins with logging
-    // BEST PRACTICE: Use constants for plugin names to prevent typos
-    kernel.Plugins.AddFromObject(
-        new IntentPlugin(kernel, loggerFactory.CreateLogger<IntentPlugin>()),
-        PluginNames.Intent);
-
-    kernel.Plugins.AddFromObject(
-        new AzureOpenAIPlugin(kernel, loggerFactory.CreateLogger<AzureOpenAIPlugin>()),
-        PluginNames.AzureOpenAI);
-
-    kernel.Plugins.AddFromObject(
-        new M365CopilotPlugin(
-            sp.GetRequiredService<IHttpClientFactory>(),
-            sp.GetRequiredService<MicrosoftGraphSettings>(),
-            sp.GetRequiredService<ILogger<M365CopilotPlugin>>()),
-        PluginNames.M365Copilot);
-
-    kernel.Plugins.AddFromObject(
-        new SynthesisPlugin(kernel, loggerFactory.CreateLogger<SynthesisPlugin>()),
-        PluginNames.Synthesis);
-
     return kernel;
 });
+
+// Add AspNet token validation
+builder.Services.AddAgentAspNetAuthentication(builder.Configuration);
 
 // === M365 Agents SDK Setup ===
 // LAB SIMPLIFICATION: MemoryStorage stores conversation state in-memory.
@@ -162,18 +144,18 @@ builder.AddAgent<OrchestratorAgent>();
 // - Specify exact methods needed (not AllowAnyMethod)
 // - Specify exact headers needed (not AllowAnyHeader)
 // - Be cautious with AllowCredentials (enables cookie-based requests)
-builder.Services.AddCors(options =>
-{
-    options.AddDefaultPolicy(policy =>
-    {
-        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-            ?? ["http://localhost:5000"];
-        policy.WithOrigins(allowedOrigins)
-              .WithMethods("GET", "POST")           // Only methods we actually need
-              .WithHeaders("Content-Type")          // Only headers we actually need
-              .AllowCredentials();
-    });
-});
+//builder.Services.AddCors(options =>
+//{
+//    options.AddDefaultPolicy(policy =>
+//    {
+//        var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+//            ?? ["http://localhost:5000"];
+//        policy.WithOrigins(allowedOrigins)
+//              .WithMethods("GET", "POST")           // Only methods we actually need
+//              .WithHeaders("Content-Type")          // Only headers we actually need
+//              .AllowCredentials();
+//    });
+//});
 
 // ============================================================================
 // RATE LIMITING
@@ -233,9 +215,11 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.UseSession();
-app.UseAuthMiddleware();
+//app.UseAuthMiddleware();
+app.UseAuthentication();
+app.UseAuthorization();
 
-app.UseCors();
+//app.UseCors();
 app.UseRateLimiter();
 
 // === Health Check Endpoints ===
@@ -247,7 +231,7 @@ app.MapHealthChecks("/health");
 app.MapHealthChecks("/ready");
 
 // === Auth Endpoints (for web channel) ===
-app.MapAuthEndpoints();
+//app.MapAuthEndpoints();
 
 // === Agent Endpoint (M365 Agents SDK) ===
 app.MapPost("/api/messages", async (HttpRequest request, HttpResponse response, IAgentHttpAdapter adapter, IAgent agent, CancellationToken cancellationToken) =>
@@ -256,6 +240,20 @@ app.MapPost("/api/messages", async (HttpRequest request, HttpResponse response, 
 }).RequireRateLimiting("api");
 
 // === Fallback to index.html for SPA ===
-app.MapFallbackToFile("index.html");
+//app.MapFallbackToFile("index.html");
+
+if (app.Environment.IsDevelopment() || app.Environment.EnvironmentName == "Playground")
+{
+    app.UseDeveloperExceptionPage();
+
+    // Hard coded for brevity and ease of testing. 
+    // In production, this should be set in configuration.
+    app.Urls.Add($"http://localhost:3978");
+}
+else
+{
+//    app.MapControllers();
+}
+
 
 app.Run();
