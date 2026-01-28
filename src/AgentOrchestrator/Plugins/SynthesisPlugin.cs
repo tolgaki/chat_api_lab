@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using Microsoft.Agents.Builder;
+using Microsoft.Agents.Builder.App.UserAuth;
 using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 
@@ -8,9 +10,11 @@ public class SynthesisPlugin
 {
     private readonly Kernel _kernel;
     private readonly ILogger<SynthesisPlugin>? _logger;
+    private readonly AgentContext _context;
 
-    public SynthesisPlugin(Kernel kernel, ILogger<SynthesisPlugin>? logger = null)
+    public SynthesisPlugin(AgentContext agentContext, Kernel kernel, ILogger<SynthesisPlugin>? logger = null)
     {
+        _context = agentContext;
         _kernel = kernel;
         _logger = logger;
     }
@@ -23,6 +27,9 @@ public class SynthesisPlugin
         CancellationToken cancellationToken = default)
     {
         _logger?.LogInformation("Synthesizing responses for query: {Query}", originalQuery);
+        
+        await _context.Context.StreamingResponse.QueueInformativeUpdateAsync("Synthesizing responses...");
+
         var prompt = $"""
             You are a response synthesizer. Your job is to combine multiple agent responses into a single,
             coherent response that addresses the user's original query.

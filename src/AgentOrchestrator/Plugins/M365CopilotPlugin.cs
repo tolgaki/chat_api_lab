@@ -1,12 +1,12 @@
-using System.ComponentModel;
-using AgentOrchestrator.CopilotSdk;
+//using AgentOrchestrator.CopilotSdk;
 using AgentOrchestrator.Models;
+using Microsoft.Agents.M365Copilot.Beta;
+using Microsoft.Agents.M365Copilot.Beta.Copilot.Conversations.Item.MicrosoftGraphCopilotChat;
+using Microsoft.Agents.M365Copilot.Beta.Models;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Kiota.Http.HttpClientLibrary;
 using Microsoft.SemanticKernel;
-using CopilotChatRequest = AgentOrchestrator.CopilotSdk.Models.ChatRequest;
-using CopilotMessageParameter = AgentOrchestrator.CopilotSdk.Models.MessageParameter;
-using CopilotLocationHint = AgentOrchestrator.CopilotSdk.Models.LocationHint;
+using System.ComponentModel;
 
 namespace AgentOrchestrator.Plugins;
 
@@ -31,15 +31,34 @@ namespace AgentOrchestrator.Plugins;
 /// </summary>
 public class M365CopilotPlugin
 {
+    private readonly AgentContext _context;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly MicrosoftGraphSettings _graphSettings;
     private readonly ILogger<M365CopilotPlugin> _logger;
+    private readonly List<string> requiredScopesList = new()
+    {
+            "openid",
+            "profile",
+            "email",
+            "User.Read",
+            "Mail.Read",
+            "Calendars.Read",
+            "Files.Read.All",
+            "Sites.Read.All",
+            "People.Read.All",
+            "Chat.Read",
+            "OnlineMeetingTranscript.Read.All",
+            "ChannelMessage.Read.All",
+            "ExternalItem.Read.All"
+    };
 
     public M365CopilotPlugin(
+        AgentContext agentContext,
         IHttpClientFactory httpClientFactory,
         MicrosoftGraphSettings graphSettings,
         ILogger<M365CopilotPlugin> logger)
     {
+        _context = agentContext;
         _httpClientFactory = httpClientFactory;
         _graphSettings = graphSettings;
         _logger = logger;
@@ -49,79 +68,82 @@ public class M365CopilotPlugin
     [Description("Query Microsoft 365 Copilot for email-related questions using the Chat API")]
     public async Task<string> QueryEmails(
         [Description("The email-related question")] string query,
-        [Description("User's access token for Graph API")] string accessToken,
         CancellationToken cancellationToken = default)
     {
-        return await CallCopilotChatApiAsync(query, accessToken, cancellationToken);
+        return await CallCopilotChatApiAsync(query, cancellationToken);
     }
 
     [KernelFunction]
     [Description("Query Microsoft 365 Copilot for calendar-related questions using the Chat API")]
     public async Task<string> QueryCalendar(
         [Description("The calendar-related question")] string query,
-        [Description("User's access token for Graph API")] string accessToken,
         CancellationToken cancellationToken = default)
     {
-        return await CallCopilotChatApiAsync(query, accessToken, cancellationToken);
+        return await CallCopilotChatApiAsync(query, cancellationToken);
     }
 
     [KernelFunction]
     [Description("Query Microsoft 365 Copilot for file and document questions using the Chat API")]
     public async Task<string> QueryFiles(
         [Description("The files-related question")] string query,
-        [Description("User's access token for Graph API")] string accessToken,
         CancellationToken cancellationToken = default)
     {
-        return await CallCopilotChatApiAsync(query, accessToken, cancellationToken);
+        return await CallCopilotChatApiAsync(query, cancellationToken);
     }
 
     [KernelFunction]
     [Description("Query Microsoft 365 Copilot for people and organization questions using the Chat API")]
     public async Task<string> QueryPeople(
         [Description("The people-related question")] string query,
-        [Description("User's access token for Graph API")] string accessToken,
         CancellationToken cancellationToken = default)
     {
-        return await CallCopilotChatApiAsync(query, accessToken, cancellationToken);
+        return await CallCopilotChatApiAsync(query, cancellationToken);
     }
 
     private async Task<string> CallCopilotChatApiAsync(
         string query,
-        string accessToken,
         CancellationToken cancellationToken)
     {
         _logger.LogInformation("Calling Copilot Chat API with query: {Query}", query);
 
+        await _context.Context.StreamingResponse.QueueInformativeUpdateAsync("Contacting Microsoft 365 Copilot...");
+
         // Create Kiota client with user's access token
-        var client = CreateCopilotClient(accessToken);
-        Guid? conversationId = null;
+        var client = await CreateCopilotClientAsync();
+        string? conversationId = _context.State.Conversation.GetValue<string>("M365CopilotConversationId");
 
         try
         {
-            // Step 1: Create conversation
-            _logger.LogInformation("Creating conversation...");
-            var conversation = await client.Copilot.Conversations.PostAsync(
-                new AgentOrchestrator.CopilotSdk.Copilot.Conversations.ConversationsPostRequestBody(),
-                cancellationToken: cancellationToken);
-
-            if (conversation?.Id == null)
+            if (string.IsNullOrEmpty(conversationId))
             {
-                throw new InvalidOperationException("Failed to create conversation - no ID returned");
-            }
+                // Step 1: Create conversation
+                _logger.LogInformation("Creating conversation...");
+                var conversation = await client.Copilot.Conversations.PostAsync(
+                    new CopilotConversation(),
+                    cancellationToken: cancellationToken);
 
-            conversationId = conversation.Id;
-            _logger.LogInformation("Created conversation: {ConversationId}", conversation.Id);
+                if (conversation?.Id == null)
+                {
+                    throw new InvalidOperationException("Failed to create conversation - no ID returned");
+                }
+                conversationId = conversation.Id;
+                _context.State.Conversation.SetValue<string>("M365CopilotConversationId",conversationId);
+            }
+            _logger.LogInformation("Created conversation: {ConversationId}", conversationId);
 
             // Step 2: Send chat message
-            var chatRequest = new CopilotChatRequest
+            await _context.Context.StreamingResponse.QueueInformativeUpdateAsync("Talking to Microsoft 365 Copilot...");
+            var chatRequest = new ChatPostRequestBody()
             {
-                Message = new CopilotMessageParameter { Text = query },
-                LocationHint = new CopilotLocationHint { TimeZone = "America/Los_Angeles" }
+                Message = new CopilotConversationRequestMessageParameter()
+                {
+                    Text = query
+                },
+                LocationHint = new CopilotConversationLocation() { TimeZone = "America/Los_Angeles" }
             };
 
             _logger.LogInformation("Sending chat message...");
-            var response = await client.Copilot.Conversations[conversation.Id.Value]
-                .Chat.PostAsync(chatRequest, cancellationToken: cancellationToken);
+            var response = await client.Copilot.Conversations[conversationId].MicrosoftGraphCopilotChat.PostAsync(chatRequest, cancellationToken: cancellationToken);
 
             if (response?.Messages == null || response.Messages.Count == 0)
             {
@@ -136,26 +158,26 @@ public class M365CopilotPlugin
             _logger.LogInformation("Received Copilot response");
             return responseText;
         }
-        catch (CopilotSdk.Models.CopilotConversation401Error ex)
-        {
-            _logger.LogError(ex, "Unauthorized - token may be expired or invalid");
-            throw new UnauthorizedAccessException("Your session has expired. Please log in again.");
-        }
-        catch (CopilotSdk.Models.CopilotConversation403Error ex)
-        {
-            _logger.LogError(ex, "Forbidden - user may lack Copilot license");
-            return "You don't have access to Microsoft 365 Copilot. Please contact your administrator to verify your license.";
-        }
-        catch (CopilotSdk.Models.CopilotConversation404Error ex)
-        {
-            _logger.LogError(ex, "Not found - conversation or endpoint not available");
-            return "The Copilot service is not available. Please try again later.";
-        }
-        catch (CopilotSdk.Models.CopilotConversation500Error ex)
-        {
-            _logger.LogError(ex, "Server error from Copilot API");
-            return "The Copilot service encountered an error. Please try again later.";
-        }
+        //catch (CopilotSdk.Models.CopilotConversation401Error ex)
+        //{
+        //    _logger.LogError(ex, "Unauthorized - token may be expired or invalid");
+        //    throw new UnauthorizedAccessException("Your session has expired. Please log in again.");
+        //}
+        //catch (CopilotSdk.Models.CopilotConversation403Error ex)
+        //{
+        //    _logger.LogError(ex, "Forbidden - user may lack Copilot license");
+        //    return "You don't have access to Microsoft 365 Copilot. Please contact your administrator to verify your license.";
+        //}
+        //catch (CopilotSdk.Models.CopilotConversation404Error ex)
+        //{
+        //    _logger.LogError(ex, "Not found - conversation or endpoint not available");
+        //    return "The Copilot service is not available. Please try again later.";
+        //}
+        //catch (CopilotSdk.Models.CopilotConversation500Error ex)
+        //{
+        //    _logger.LogError(ex, "Server error from Copilot API");
+        //    return "The Copilot service encountered an error. Please try again later.";
+        //}
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error calling Copilot Chat API");
@@ -166,26 +188,29 @@ public class M365CopilotPlugin
             // Note: The Copilot Chat API doesn't currently support DELETE for conversations
             // Conversations are automatically cleaned up by the service after expiration
             // TODO: Add cleanup when DELETE is supported by the API
-            if (conversationId.HasValue)
+            if (!string.IsNullOrEmpty(conversationId))
             {
                 _logger.LogDebug("Conversation {ConversationId} will be cleaned up by service expiration", conversationId);
             }
         }
     }
 
-    private CopilotApi CreateCopilotClient(string accessToken)
+    private async Task<AgentsM365CopilotBetaServiceClient> CreateCopilotClientAsync()
     {
         // Create HTTP client
         var httpClient = _httpClientFactory.CreateClient("Graph");
 
         // Create authentication provider with user's token
         var authProvider = new BaseBearerTokenAuthenticationProvider(
-            new TokenProvider(accessToken));
+            new TokenProvider(
+                await _context.UserAuth.ExchangeTurnTokenAsync(
+                    _context.Context, 
+                    _context.AuthHandlerName, 
+                    exchangeScopes: requiredScopesList).ConfigureAwait(false)));
 
         // Create request adapter (handles serialization internally)
         var adapter = new HttpClientRequestAdapter(authProvider, httpClient: httpClient);
-
-        return new CopilotApi(adapter);
+        return new AgentsM365CopilotBetaServiceClient(adapter); 
     }
 }
 

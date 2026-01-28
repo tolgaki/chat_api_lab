@@ -8,9 +8,11 @@ public class IntentPlugin
 {
     private readonly Kernel _kernel;
     private readonly ILogger<IntentPlugin>? _logger;
+    private readonly AgentContext _context;
 
-    public IntentPlugin(Kernel kernel, ILogger<IntentPlugin>? logger = null)
+    public IntentPlugin(AgentContext agentContext, Kernel kernel, ILogger<IntentPlugin>? logger = null)
     {
+        _context = agentContext;
         _kernel = kernel;
         _logger = logger;
     }
@@ -22,6 +24,8 @@ public class IntentPlugin
         CancellationToken cancellationToken = default)
     {
         _logger?.LogInformation("Analyzing intent for query: {Query}", query);
+        
+        await _context.Context.StreamingResponse.QueueInformativeUpdateAsync("Analyzing intent...");
 
         var prompt = $$"""
             You are an intent classifier for a multi-agent system. Analyze the user's query and identify which agents should handle it.

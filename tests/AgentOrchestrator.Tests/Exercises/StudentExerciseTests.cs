@@ -1,4 +1,3 @@
-using AgentOrchestrator.Auth;
 using AgentOrchestrator.Models;
 using Xunit;
 
