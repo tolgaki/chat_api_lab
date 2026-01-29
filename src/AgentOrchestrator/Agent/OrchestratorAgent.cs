@@ -6,7 +6,6 @@ using Microsoft.Agents.Builder.App;
 using Microsoft.Agents.Builder.App.UserAuth;
 using Microsoft.Agents.Builder.State;
 using Microsoft.Agents.Core.Models;
-using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
 using System.Text.Json;
 
@@ -28,7 +27,6 @@ public class OrchestratorAgent : AgentApplication
     public OrchestratorAgent(
         AgentApplicationOptions options,
         Kernel kernel,
-        //ITokenService tokenService,
         IHttpContextAccessor httpContextAccessor,
         OrchestrationSettings orchestrationSettings,
         ILogger<OrchestratorAgent> logger,
@@ -36,7 +34,6 @@ public class OrchestratorAgent : AgentApplication
     {
         sp= serviceProvider;
         _kernel = kernel.Clone();
-        //_tokenService = tokenService;
         _httpContextAccessor = httpContextAccessor;
         _orchestrationSettings = orchestrationSettings;
         _logger = logger;

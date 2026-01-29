@@ -66,7 +66,7 @@ public class M365CopilotPlugin
 
     [KernelFunction]
     [Description("Query Microsoft 365 Copilot for email-related questions using the Chat API")]
-    public async Task<string> QueryEmails(
+    public async Task<string> QueryEmailsAsync(
         [Description("The email-related question")] string query,
         CancellationToken cancellationToken = default)
     {
@@ -75,7 +75,7 @@ public class M365CopilotPlugin
 
     [KernelFunction]
     [Description("Query Microsoft 365 Copilot for calendar-related questions using the Chat API")]
-    public async Task<string> QueryCalendar(
+    public async Task<string> QueryCalendarAsync(
         [Description("The calendar-related question")] string query,
         CancellationToken cancellationToken = default)
     {
@@ -84,7 +84,7 @@ public class M365CopilotPlugin
 
     [KernelFunction]
     [Description("Query Microsoft 365 Copilot for file and document questions using the Chat API")]
-    public async Task<string> QueryFiles(
+    public async Task<string> QueryFilesAsync(
         [Description("The files-related question")] string query,
         CancellationToken cancellationToken = default)
     {
@@ -93,7 +93,7 @@ public class M365CopilotPlugin
 
     [KernelFunction]
     [Description("Query Microsoft 365 Copilot for people and organization questions using the Chat API")]
-    public async Task<string> QueryPeople(
+    public async Task<string> QueryPeopleAsync(
         [Description("The people-related question")] string query,
         CancellationToken cancellationToken = default)
     {
@@ -201,12 +201,12 @@ public class M365CopilotPlugin
         var httpClient = _httpClientFactory.CreateClient("Graph");
 
         // Create authentication provider with user's token
+        var userToken = await _context.UserAuth.ExchangeTurnTokenAsync(
+                    _context.Context,
+                    _context.AuthHandlerName,
+                    exchangeScopes: requiredScopesList).ConfigureAwait(false); 
         var authProvider = new BaseBearerTokenAuthenticationProvider(
-            new TokenProvider(
-                await _context.UserAuth.ExchangeTurnTokenAsync(
-                    _context.Context, 
-                    _context.AuthHandlerName, 
-                    exchangeScopes: requiredScopesList).ConfigureAwait(false)));
+            new TokenProvider(userToken));
 
         // Create request adapter (handles serialization internally)
         var adapter = new HttpClientRequestAdapter(authProvider, httpClient: httpClient);
@@ -233,7 +233,6 @@ internal class TokenProvider : IAccessTokenProvider
     {
         _accessToken = accessToken;
     }
-
     public AllowedHostsValidator AllowedHostsValidator => new(AllowedHosts);
 
     public Task<string> GetAuthorizationTokenAsync(

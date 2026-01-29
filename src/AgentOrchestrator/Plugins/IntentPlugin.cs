@@ -1,6 +1,5 @@
-using System.ComponentModel;
-using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
+using System.ComponentModel;
 
 namespace AgentOrchestrator.Plugins;
 
@@ -19,7 +18,7 @@ public class IntentPlugin
 
     [KernelFunction]
     [Description("Analyzes a user query to identify intent types for routing to appropriate agents")]
-    public async Task<string> AnalyzeIntent(
+    public async Task<string> AnalyzeIntentAsync(
         [Description("The user's query to analyze")] string query,
         CancellationToken cancellationToken = default)
     {

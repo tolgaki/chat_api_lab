@@ -1,8 +1,5 @@
-using System.ComponentModel;
-using Microsoft.Agents.Builder;
-using Microsoft.Agents.Builder.App.UserAuth;
-using Microsoft.Extensions.Logging;
 using Microsoft.SemanticKernel;
+using System.ComponentModel;
 
 namespace AgentOrchestrator.Plugins;
 
@@ -21,7 +18,7 @@ public class SynthesisPlugin
 
     [KernelFunction]
     [Description("Synthesizes multiple agent responses into a coherent unified response")]
-    public async Task<string> Synthesize(
+    public async Task<string> SynthesizeAsync(
         [Description("The original user query")] string originalQuery,
         [Description("JSON array of agent responses to synthesize")] string responses,
         CancellationToken cancellationToken = default)

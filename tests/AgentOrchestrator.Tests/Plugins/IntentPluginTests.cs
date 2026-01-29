@@ -14,9 +14,10 @@ public class IntentPluginTests
         // Arrange
         var kernelBuilder = Kernel.CreateBuilder();
         var kernel = kernelBuilder.Build();
+        var agentContext = new Mock<AgentContext>().Object;
 
         // Act & Assert
-        var plugin = new IntentPlugin(kernel);
+        var plugin = new IntentPlugin(agentContext, kernel);
         Assert.NotNull(plugin);
     }
 
