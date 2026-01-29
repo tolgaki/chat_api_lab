@@ -2,7 +2,7 @@
 
 Get the Agent Orchestrator running in Azure with Teams integration in under 30 minutes.
 
-> **Local Development?** See the [README](README.md#quick-start) for running locally with `dotnet run`.
+> **Local Development?** See [QUICK_START_LOCAL.md](QUICK_START_LOCAL.md) for running locally without Azure.
 
 ## Prerequisites Checklist
 
@@ -14,7 +14,14 @@ Before starting, ensure you have:
 - [ ] Microsoft 365 tenant with Copilot license
 - [ ] Azure AD app registration (see [Prerequisites](docs/self-paced/PREREQUISITES.md))
 
-## Step 1: Collect Your Configuration Values
+## Step 1: Clone the Repository
+
+```bash
+git clone https://github.com/YOUR-ORG/chat_api_lab.git
+cd chat_api_lab
+```
+
+## Step 2: Collect Your Configuration Values
 
 You'll need these values from Azure Portal:
 
@@ -29,10 +36,9 @@ You'll need these values from Azure Portal:
 | `BOT_CLIENT_ID` | Azure Portal → Azure Bot → Configuration → Microsoft App ID |
 | `BOT_CLIENT_SECRET` | Azure Portal → Azure Bot → Configuration → Manage Password |
 
-## Step 2: One-Command Deployment
+## Step 3: One-Command Deployment
 
-Run this single command (replace placeholders with your values):
-
+**macOS/Linux:**
 ```bash
 ./scripts/deploy.sh \
   --app-name my-agent-app \
@@ -51,13 +57,32 @@ Run this single command (replace placeholders with your values):
   --package-manifest
 ```
 
+**Windows (PowerShell):**
+```powershell
+.\scripts\deploy.ps1 `
+  -AppName my-agent-app `
+  -ResourceGroup rg-my-agent `
+  -CreateResources `
+  -ConfigureSettings `
+  -OpenAIEndpoint "https://YOUR-RESOURCE.openai.azure.com/" `
+  -OpenAIDeployment "gpt-4o" `
+  -OpenAIKey "YOUR-OPENAI-KEY" `
+  -AadTenantId "YOUR-TENANT-ID" `
+  -AadClientId "YOUR-AAD-CLIENT-ID" `
+  -AadClientSecret "YOUR-AAD-SECRET" `
+  -BotClientId "YOUR-BOT-CLIENT-ID" `
+  -BotClientSecret "YOUR-BOT-SECRET" `
+  -BotTenantId "YOUR-TENANT-ID" `
+  -PackageManifest
+```
+
 This will:
 1. ✅ Create Azure resource group and App Service
 2. ✅ Build and deploy the .NET application
 3. ✅ Configure all app settings
 4. ✅ Create Teams manifest package
 
-## Step 3: Configure Azure Bot Messaging Endpoint
+## Step 4: Configure Azure Bot Messaging Endpoint
 
 1. Go to **Azure Portal** → **Azure Bot** → **Configuration**
 2. Set **Messaging endpoint** to:
@@ -66,7 +91,7 @@ This will:
    ```
 3. Click **Apply**
 
-## Step 4: Add Redirect URI to Azure AD App
+## Step 5: Add Redirect URI to Azure AD App
 
 1. Go to **Azure Portal** → **App registrations** → Your app → **Authentication**
 2. Add redirect URI:
@@ -75,14 +100,14 @@ This will:
    ```
 3. Click **Save**
 
-## Step 5: Deploy Teams App
+## Step 6: Deploy Teams App
 
 1. Go to [Teams Admin Center](https://admin.teams.microsoft.com)
 2. Navigate to **Teams apps** → **Manage apps** → **Upload new app**
 3. Upload the generated `src/AgentOrchestrator/appPackage/manifest.zip`
 4. Wait for approval/deployment (may take a few minutes)
 
-## Step 6: Test
+## Step 7: Test
 
 ### Test Web Interface
 1. Open `https://my-agent-app.azurewebsites.net`

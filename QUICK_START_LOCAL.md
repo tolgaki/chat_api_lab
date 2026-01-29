@@ -7,11 +7,18 @@ Run the Agent Orchestrator locally in under 10 minutes.
 ## Prerequisites
 
 - [ ] .NET 10 SDK installed (`dotnet --version`)
-- [ ] Azure AD app registration ([setup guide](docs/self-paced/PREREQUISITES.md#3-register-azure-ad-application))
+- [ ] Azure AD app registration with redirect URI `http://localhost:5001/auth/callback` ([setup guide](docs/self-paced/PREREQUISITES.md#3-register-azure-ad-application))
 - [ ] Azure OpenAI resource with a deployed model
 - [ ] Microsoft 365 Copilot license (for M365 features)
 
-## Step 1: Collect Your Configuration Values
+## Step 1: Clone the Repository
+
+```bash
+git clone https://github.com/YOUR-ORG/chat_api_lab.git
+cd chat_api_lab
+```
+
+## Step 2: Collect Your Configuration Values
 
 | Setting | Where to find it |
 |---------|------------------|
@@ -22,16 +29,16 @@ Run the Agent Orchestrator locally in under 10 minutes.
 | `OPENAI_KEY` | Azure Portal → Azure OpenAI → Keys and Endpoint |
 | `OPENAI_DEPLOYMENT` | Azure OpenAI Studio → Deployments (e.g., `gpt-4o`) |
 
-## Step 2: Add Redirect URI
-
-1. Go to **Azure Portal** → **App registrations** → Your app → **Authentication**
-2. Add redirect URI: `http://localhost:5001/auth/callback`
-3. Click **Save**
-
 ## Step 3: Run Setup Script
 
+**macOS/Linux:**
 ```bash
 ./scripts/setup-local.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+.\scripts\setup-local.ps1
 ```
 
 The script will prompt for your configuration values and set up .NET user secrets.

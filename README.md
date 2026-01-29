@@ -70,39 +70,40 @@ This lab demonstrates how to build a **.NET 10 Agent** using the **Microsoft 365
 
 ### Setup
 
-1. **Clone and navigate to the project:**
+1. **Clone the repository:**
    ```bash
-   cd src/AgentOrchestrator
+   git clone https://github.com/YOUR-ORG/chat_api_lab.git
+   cd chat_api_lab
    ```
 
-2. **Configure secrets using .NET User Secrets (recommended):**
+2. **Run the setup script (recommended):**
 
-   > **SECURITY:** Never commit secrets to version control. Use user-secrets for development.
+   **macOS/Linux:**
+   ```bash
+   ./scripts/setup-local.sh
+   ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   .\scripts\setup-local.ps1
+   ```
+
+   **Or configure manually:**
 
    ```bash
-   # Initialize user secrets
+   cd src/AgentOrchestrator
    dotnet user-secrets init
-
-   # Set Bot Service credentials
-   dotnet user-secrets set "Connections:BotServiceConnection:Settings:ClientId" "your-bot-client-id"
-   dotnet user-secrets set "Connections:BotServiceConnection:Settings:ClientSecret" "your-bot-secret"
-   dotnet user-secrets set "Connections:BotServiceConnection:Settings:TenantId" "your-tenant-id"
-
-   # Set Azure AD credentials (for user authentication)
    dotnet user-secrets set "AzureAd:TenantId" "your-tenant-id"
    dotnet user-secrets set "AzureAd:ClientId" "your-client-id"
    dotnet user-secrets set "AzureAd:ClientSecret" "your-client-secret"
-
-   # Set Azure OpenAI credentials
    dotnet user-secrets set "AzureOpenAI:Endpoint" "https://your-resource.openai.azure.com/"
    dotnet user-secrets set "AzureOpenAI:ApiKey" "your-api-key"
    dotnet user-secrets set "AzureOpenAI:DeploymentName" "gpt-4o"
    ```
 
-   Alternatively, copy `appsettings.Development.json.template` to `appsettings.Development.json` and fill in values (but never commit this file).
-
 3. **Run the application:**
    ```bash
+   cd src/AgentOrchestrator
    dotnet run --urls "http://localhost:5001"
    ```
 
