@@ -91,8 +91,8 @@ builder.Services.AddHttpClient("Graph")
         options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(240);
 
         // Copilot API can take 10-30 seconds to respond
-        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(300);
-        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(300);
+        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(120);
+        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(120);
     });
 
 // === Semantic Kernel Setup ===
